@@ -2,8 +2,10 @@
 set -e
 
 SERVER=${SERVER:="$2.akretion.com"}
+POSTGRESQL_SV=${POSTGRESQL_SV:="/etc/devstep/service/postgresql"}
 POSTGRESQL_DB=${POSTGRESQL_DB:="db"}
 POSTGRESQL_DATA=${POSTGRESQL_DATA:="/workspace/.db"}
+POSTGRESQL_BACKUP=${POSTGRESQL_BACKUPS:="/workspace/.db_backups"}
 WORKDIR=${WORKDIR:="/workspace"}
 DOCKER_USER=${DOCKER_USER:="developer"}
 BUILDOUT=${BUILDOUT:="buildout.dev.cfg"}
@@ -151,6 +153,56 @@ case $1 in
     ak load $1 $dbname
     ;;
 
+  pitr)
+    shift
+    case $1 in
+      backup)
+        shift
+        if [ ! -f $POSTGRESQL_BACKUPS/pitr_list ]; then
+            rm -rf $POSTGRESQL_BACKUPS
+            mkdir $POSTGRESQL_BACKUPS
+            touch $POSTGRESQL_BACKUPS/pitr_list
+            pitrery backup
+        fi
+        echo $(date +'%F %T') UTC label: $@ >> $POSTGRESQL_BACKUPS/pitr_list
+      ;;
+      list)
+        pitr_list=$POSTGRESQL_BACKUP/pitr_list
+        [ -f $pitr_list ] && cat -n $pitr_list
+      ;;
+      purge)
+        read -p "purge all existing pitr files (y/n)? " choice
+        case "$choice" in
+          y|Y) rm -rf $POSTGRESQL_BACKUPS;;
+          *) echo "canceled";;
+        esac
+      ;;
+      restore)
+        shift
+        num=$1
+        pitr_list=$POSTGRESQL_BACKUPS/pitr_list
+        [ ! -f $pitr_list ] && echo "no backup, please run 'ak pitr backup' before." && exit
+        [ -z "$num" ] && num=$(wc -l $pitr_list | cut -d ' ' -f1)
+        backup=$(sed -n $num"p" $pitr_list)
+        read -p "delete databases and restore from backup $num ($backup) (y/n)? " choice
+        target_time=$(echo $backup | awk '{printf ("%s %s", $1, $2)}')
+        case "$choice" in
+          y|Y)
+            sv stop $POSTGRESQL_SV
+            rm -rf $POSTGRESQL_DATA
+            pitrery restore -d "$target_time"
+            sv start $POSTGRESQL_SV
+            ak wait_postgres
+            ;;
+          *) echo "canceled";;
+          esac
+      ;;
+      *)
+        echo "usage: pitr [backup|list|restore|purge] [ARGS...]"
+      ;;
+    esac
+    ;;
+
   dump)
     shift
     ak wait_postgres
@@ -176,15 +228,11 @@ EOF
     ;;
 
   wait_postgres)
-    [ ! -d /etc/devstep/service/postgresql ] && exit
-    [ -f /home/devstep/log/postgresql.log ] && r=$(grep "ready to accept connections" /home/devstep/log/postgresql.log)
-    [ -z "$r" ] && echo "waiting for Postgresql embedded server to start..."
-    while [ -z "$r" ]
+    until pg_isready
     do
-      sleep 0.1
-      [ -f /home/devstep/log/postgresql.log ] && r=$(grep "ready to accept connections" /home/devstep/log/postgresql.log)
+        echo "waiting for Postgresql embedded server to start..."
+        sleep 2
     done
-    sleep 0.01
     if [ -z "$(psql -l | grep db | grep $DOCKER_USER)" ]; then
       sleep 0.3
       sudo setuidgid postgres psql -c "ALTER DATABASE db OWNER TO $DOCKER_USER;"
@@ -211,6 +259,10 @@ EOF
       load      Load a database from a file args. ak load [file] [dbname]
       reload    Drop and load a database from a file args. ak reload [file] [dbname]
       dump      Dump a database ak dump [file] [dbname]
+      pitr      Make a pitr backup: ak pitr backup [label]
+                List all pitr backups: ak pitr list
+                Restore a pitr backup: ak pitr restore [number]
+                purge all pitr files: ak pitr purge
       reset_pwd Set 'admin' as the password of all users
 EOF
     ;;
