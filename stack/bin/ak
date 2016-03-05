@@ -54,10 +54,19 @@ case $1 in
     python "$WORKDIR/bin/start_openerp" "$@"
     ;;
 
-  debug)
+  upgrade)
     shift
+    [ ! -f "$WORKDIR/bin/upgrade_openerp" ] && \
+    export FROM_BASH=true && ak build
     ak wait_postgres
-    python "$WORKDIR/bin/start_openerp" "$@" "--debug"
+    dbname="db"
+    while getopts "d:" opt; do
+     case $opt in
+          d) dbname=$OPTARG;;
+     esac
+    done
+    echo "Upgrade $dbname"
+    python "$WORKDIR/bin/upgrade_openerp" "-d $dbname"
     ;;
 
   build)
@@ -66,6 +75,89 @@ case $1 in
     echo "building project with Anybox Buildout recipe and config file $file"
     echo "this can take a while..."
     python "$WORKDIR/bin/buildout" "$@" "-c" "$file"
+    ;;
+
+  init)
+    shift
+    echo "drop and init db by installing modules $@"
+    export FROM_BASH=true
+        # force drop db if arg -f
+    dbname="db"
+    modules="base"
+    parmindex=0
+    demo=0
+    withdemo=0
+
+    for opt in "$@"; do
+         i=$[$i +1]
+         case $opt in
+              -d) var=${@:$parmindex+1:$parmindex}
+                  if [ -z "$var" ]; then
+                      echo "Option -d requires an argument." >&2
+                      exit 1
+                  else
+                        dbname=$var
+                  fi
+                  # remove -d dbname from args "$@"
+                  set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+                  set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+                  ;;
+         esac
+    done
+
+    for opt in "$@"; do
+        parmindex=$[$parmindex +1]
+        case $opt in
+              -f)
+                  echo -e "\tDrop then create : $dbname"
+                  dropdb $dbname --if-exists
+                  createdb $dbname
+                   # remove -f from args "$@"
+                  set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+              "--1by1" | "-b")
+                  echo -e "\tUpdate modules one by one"
+                  by1=1
+                  # remove --1by1 or -b from args "$@"
+                  set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+                --demo)
+                    echo -e "\t init with demo"
+                    withdemo=1
+                    # remove --demo from args "$@"
+                    set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+        esac
+    done
+
+    if [ -z "$1" ]; then
+        modules="base"
+    else
+        modules="$1"
+    fi
+
+    if [ "$withdemo" == 1 ]; then
+      ak run "-i" "$modules" "-d $dbname"
+    else
+      ak run "-i" "$modules" "-d $dbname" "--without-demo=True"
+    fi
+
+<<COMMENT1
+    # install module one by one
+    if [ $by1=1 ]; then
+        modules="base"
+        IFS=',' eval 'modulearray=($string)'
+        i=0
+        for module in "${modulearray[@]}"
+          do
+            i=$[$i +1]
+            if [ ${#modulearray[@]} > 1 -a $i == ${#modulearray[@]} ]; then
+              ak run "-i" "$module" "-d $dbname"
+            else
+             ak run "-i" "$module" "-d $dbname" "--stop-after-init"
+            fi
+        done
+    else
+       ak run "-i" "$module" "-d $dbname"
+    fi
+COMMENT1
     ;;
 
   freeze)
@@ -117,22 +209,25 @@ case $1 in
 
 # Postgresql Command
 
-  psql)
-    shift
-    ak wait_postgres
-    if [ -z "$1" ]; then
-      psql db
-    else
-      psql "$@"
-    fi
-    ;;
-
   load)
     shift
     ak wait_postgres
     dbname=${2-"db"}
     echo "Loading database $1 in $dbname"
     createdb $dbname
+    # force drop db if arg -f
+    dumpfile=""
+    parmindex=0
+    for param in "$@"
+      do
+        parmindex += 1
+        if [[ "$param" == "-f" ]]; then
+          echo -e "\tDrop : $dbname"
+          dropdb $dbname --if-exists
+          set -- "${@:1:$parmindex-1}" "${@:$parmindex+1}"
+        fi
+    done
+    echo -e "\tLoad : $dbname"
     if [[ $1 =~ \.gz$ ]]; then
         gunzip -c $1 | psql $dbname
     else
@@ -140,15 +235,6 @@ case $1 in
     fi
     echo "Inactivated cron"
     psql $dbname -c "UPDATE ir_cron SET active=False"
-    ;;
-
-  reload)
-    shift
-    ak wait_postgres
-    dbname=${2-"db"}
-    echo "Drop database $dbname"
-    dropdb $dbname --if-exists
-    ak load $1 $dbname
     ;;
 
   dump)
@@ -201,17 +287,20 @@ EOF
 
     Commands:
       run       Run Odoo
-      debug     Run Odoo in debug mode
       build     Build Your Project using frozen.conf if existing or buildout.dev.cfg
                 If you have an existing frozen.cfg and you want to force the update
                 just add --update as arguments "ak build --update"
+      init       Init new odoo db by installing modules
+                ak init [-d dbname] [-f] [--demo]
+                -f to force drop then create dbname
+                --demo to init db by demo data
       freeze    Freeze all dependency for your project
       console   Open a Odoo Shell
-      psql      Open a Psql shell
-      load      Load a database from a file args. ak load [file] [dbname]
-      reload    Drop and load a database from a file args. ak reload [file] [dbname]
+      load      Load a database from a file args. ak load [file] [dbname] [-f to
+                force reload (drop then create db)]
       dump      Dump a database ak dump [file] [dbname]
       reset_pwd Set 'admin' as the password of all users
+      upgrade   Run database upgrade : ak upgrade [dbname] bd by default
 EOF
     ;;
 
