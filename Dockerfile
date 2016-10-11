@@ -4,10 +4,9 @@ USER root
 
 RUN DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
-    apt-get install -y libsasl2-dev bzr mercurial libxmlsec1-dev python-pip graphviz \
-    python-cups python-dbus python-openssl python-libxml2 xfonts-base \
-    xfonts-75dpi npm git postgresql-client wget libpq-dev libjpeg8-dev libldap2-dev \
-    libffi-dev vim ghostscript && \
+    apt-get install -y bzr mercurial python-pip graphviz \
+    xfonts-base xfonts-75dpi npm git postgresql-client wget vim ghostscript \
+    libpq-dev libjpeg8-dev libldap2-dev libffi-dev libsasl2-dev libxmlsec1-dev && \
     npm install -g less less-plugin-clean-css && \
     ln -sf /usr/bin/nodejs /usr/bin/node && \
     apt-get clean
