@@ -46,7 +46,7 @@ RUN pip install --upgrade pip && \
     pip install flake8 && \
     pip install pgcli && \
     pip install git+https://github.com/oca/pylint-odoo.git && \
-    pip install git+https://github.com/akretion/ak.git@1.2.3
+    pip install git+https://github.com/akretion/ak.git@master
 
 WORKDIR /workspace
 
