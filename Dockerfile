@@ -7,14 +7,10 @@ RUN DEBIAN_FRONTEND=noninteractive && \
     apt-get install -y libsasl2-dev bzr mercurial libxmlsec1-dev python-pip graphviz \
     python-cups python-dbus python-openssl python-libxml2 xfonts-base \
     xfonts-75dpi npm git postgresql-client wget libpq-dev libjpeg8-dev libldap2-dev \
-    libffi-dev vim telnet ghostscript poppler-utils && \
+    libffi-dev vim telnet ghostscript poppler-utils libxrender1 fontconfig xvfb && \
     npm install -g less less-plugin-clean-css && \
     ln -sf /usr/bin/nodejs /usr/bin/node && \
     apt-get clean
-
-# Force to install the version 0.12.1 of wkhtmltopdf as recomended by odoo
-RUN wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb && \
-    dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb
 
 RUN locale-gen pt_BR.UTF-8 && \
     locale-gen en_US.UTF-8 && \
@@ -49,6 +45,15 @@ RUN pip install --upgrade pip && \
     pip install git+https://github.com/akretion/ak.git@1.4.0
 
 WORKDIR /workspace
+
+# Force to install the version 0.12.4 of wkhtmltopdf
+RUN wget http://download.gna.org/wkhtmltopdf/0.12/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz -O wk.tar.xz && \
+    tar xf wk.tar.xz && \
+    rm wk.tar.xz
+
+RUN mv /workspace/wkhtmltox/bin/wkhtmltopdf /bin/wkhtmltopdf && \
+    mv /workspace/wkhtmltox/bin/wkhtmltoimage /bin/wkhtmltoimage && \
+    rm -Rf /workspace/wkhtmltox
 
 COPY stack/entrypoint /usr/local/bin/entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
