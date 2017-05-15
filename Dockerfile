@@ -6,10 +6,19 @@ RUN DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
     apt-get install -y libsasl2-dev bzr mercurial libxmlsec1-dev \
     python-pip graphviz xfonts-base xfonts-75dpi npm git \
-    postgresql-client wget libpq-dev libjpeg8-dev libldap2-dev \
+    wget libpq-dev libjpeg8-dev libldap2-dev \
     libffi-dev vim telnet ghostscript poppler-utils && \
     npm install -g less less-plugin-clean-css && \
     ln -sf /usr/bin/nodejs /usr/bin/node && \
+    apt-get clean
+
+# Install postgresql client 9.6
+RUN wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+
+RUN DEBIAN_FRONTEND=noninteractive && \
+    apt-get update && \
+    apt-get install -y postgresql-client-9.6 && \
     apt-get clean
 
 # Force to install the version 0.12.1 of wkhtmltopdf as recomended by odoo
