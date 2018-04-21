@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:bionic-20180410
 
 USER root
 
