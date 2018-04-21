@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:trusty-20180412
 
 USER root
 
